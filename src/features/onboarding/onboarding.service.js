@@ -9,9 +9,9 @@ const ONBOARDING_REWARD = {
   badgeId: 'first-steps',
 };
 
-const VALID_TRANSPORT_MODES = ['car', 'bike', 'public', 'walking', 'wfh'];
-const VALID_DIET_TYPES     = ['vegan', 'vegetarian', 'omnivore', 'meat-heavy'];
-const VALID_GOALS          = ['reduce25', 'reduce50', 'offset', 'awareness'];
+const VALID_TRANSPORT_MODES = ['car', 'bike', 'bus', 'metro', 'walking', 'mixed', 'public', 'wfh'];
+const VALID_DIET_TYPES     = ['vegan', 'vegetarian', 'balanced', 'omnivore', 'meat-heavy'];
+const VALID_GOALS          = ['transportation', 'electricity', 'lifestyle', 'sustainability', 'reduce25', 'reduce50', 'offset', 'awareness'];
 const VALID_WORK_STYLES    = ['office', 'remote', 'hybrid'];
 
 // ─── Custom Error ────────────────────────────────────────────────────────────
@@ -51,43 +51,51 @@ const normaliseProfileData = (data) => {
   // Location
   if (data.city !== undefined)    profile.city = data.city;
   if (data.country !== undefined) profile.country = data.country;
+  if (data.fullName !== undefined) profile.fullName = data.fullName;
+  if (data.onboardingStep !== undefined) profile.onboardingStep = Number(data.onboardingStep);
 
   // Transportation (nested + legacy)
-  if (data.transportMode !== undefined || data.dailyTravelKm !== undefined) {
+  const dailyDistance = data.dailyDistanceKm ?? data.dailyTravelKm;
+  if (data.transportMode !== undefined || dailyDistance !== undefined || data.transportation !== undefined) {
     profile.transportation = {};
-    if (data.transportMode !== undefined) {
-      profile.transportation.mode = data.transportMode;
-      profile.transportMode = data.transportMode;          // legacy
+    const transportMode = data.transportMode ?? data.transportation?.mode;
+    if (transportMode !== undefined) {
+      profile.transportation.mode = transportMode;
+      profile.transportMode = transportMode;          // legacy
     }
-    if (data.dailyTravelKm !== undefined) {
-      profile.transportation.dailyDistanceKm = Number(data.dailyTravelKm);
-      profile.dailyTravelKm = Number(data.dailyTravelKm); // legacy
+    if (dailyDistance !== undefined) {
+      profile.transportation.dailyDistanceKm = Number(dailyDistance);
+      profile.dailyTravelKm = Number(dailyDistance); // legacy
     }
   }
 
   // Electricity (nested + legacy)
-  if (data.monthlyElectricityKwh !== undefined) {
-    profile.electricity = { monthlyUsage: Number(data.monthlyElectricityKwh) };
-    profile.monthlyElectricityKwh = Number(data.monthlyElectricityKwh); // legacy
+  const electricityUsage = data.monthlyElectricityKwh ?? data.electricity?.monthlyUsage;
+  if (electricityUsage !== undefined) {
+    profile.electricity = { monthlyUsage: Number(electricityUsage) };
+    profile.monthlyElectricityKwh = Number(electricityUsage); // legacy
   }
 
   // Lifestyle (nested + legacy)
-  if (data.dietType !== undefined || data.dailyDigitalHours !== undefined) {
+  const screenTime = data.screenTimeHours ?? data.dailyDigitalHours ?? data.lifestyle?.screenTime;
+  if (data.dietType !== undefined || screenTime !== undefined || data.lifestyle !== undefined) {
     profile.lifestyle = {};
-    if (data.dietType !== undefined) {
-      profile.lifestyle.dietType = data.dietType;
-      profile.dietType = data.dietType;                        // legacy
+    const dietType = data.dietType ?? data.lifestyle?.dietType;
+    if (dietType !== undefined) {
+      profile.lifestyle.dietType = dietType;
+      profile.dietType = dietType;                        // legacy
     }
-    if (data.dailyDigitalHours !== undefined) {
-      profile.lifestyle.screenTime = Number(data.dailyDigitalHours);
-      profile.dailyDigitalHours = Number(data.dailyDigitalHours); // legacy
+    if (screenTime !== undefined) {
+      profile.lifestyle.screenTime = Number(screenTime);
+      profile.dailyDigitalHours = Number(screenTime); // legacy
     }
   }
 
   // Sustainability goal (nested + legacy)
-  if (data.goalType !== undefined) {
-    profile.sustainabilityGoal = data.goalType;
-    profile.goalType = data.goalType; // legacy
+  const goalType = data.goal ?? data.goalType ?? data.sustainabilityGoal;
+  if (goalType !== undefined) {
+    profile.sustainabilityGoal = goalType;
+    profile.goalType = goalType; // legacy
   }
 
   // Household & work style (legacy only)

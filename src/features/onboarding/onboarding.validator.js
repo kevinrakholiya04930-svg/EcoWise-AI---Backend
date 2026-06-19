@@ -1,8 +1,8 @@
 const { body } = require('express-validator');
 
-const transportModes = ['car', 'bike', 'public', 'walking', 'wfh'];
-const dietTypes = ['vegan', 'vegetarian', 'omnivore', 'meat-heavy'];
-const sustainabilityGoals = ['reduce25', 'reduce50', 'offset', 'awareness'];
+const transportModes = ['car', 'bike', 'bus', 'metro', 'walking', 'mixed', 'public', 'wfh'];
+const dietTypes = ['vegan', 'vegetarian', 'balanced', 'omnivore', 'meat-heavy'];
+const sustainabilityGoals = ['transportation', 'electricity', 'lifestyle', 'sustainability', 'reduce25', 'reduce50', 'offset', 'awareness'];
 
 const optionalOnboardingValidator = [
   body('city')
@@ -10,6 +10,51 @@ const optionalOnboardingValidator = [
     .trim()
     .isLength({ max: 120 })
     .withMessage('City must be 120 characters or fewer'),
+  body('fullName')
+    .optional()
+    .trim()
+    .isLength({ max: 120 })
+    .withMessage('Full name must be 120 characters or fewer'),
+  body('onboardingStep')
+    .optional()
+    .isInt({ min: 0, max: 20 })
+    .withMessage('Onboarding step is invalid'),
+  body('transportMode')
+    .optional()
+    .isIn(transportModes)
+    .withMessage('Transportation mode is invalid'),
+  body('dailyDistanceKm')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Daily distance must be a number greater than or equal to 0'),
+  body('dailyTravelKm')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Daily distance must be a number greater than or equal to 0'),
+  body('monthlyElectricityKwh')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Monthly electricity usage must be a number greater than or equal to 0'),
+  body('dietType')
+    .optional()
+    .isIn(dietTypes)
+    .withMessage('Diet type is invalid'),
+  body('screenTimeHours')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Screen time must be a number greater than or equal to 0'),
+  body('dailyDigitalHours')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Screen time must be a number greater than or equal to 0'),
+  body('goal')
+    .optional()
+    .isIn(sustainabilityGoals)
+    .withMessage('Sustainability goal is invalid'),
+  body('goalType')
+    .optional()
+    .isIn(sustainabilityGoals)
+    .withMessage('Sustainability goal is invalid'),
   body('transportation.mode')
     .optional()
     .isIn(transportModes)

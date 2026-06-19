@@ -1,31 +1,33 @@
 const mongoose = require('mongoose');
 
 const profileSchema = new mongoose.Schema({
+  fullName: { type: String, default: '' },
   city: { type: String, default: '' },
+  onboardingStep: { type: Number, default: 0 },
   transportation: {
-    mode: { type: String, enum: ['car', 'bike', 'public', 'walking', 'wfh'], default: 'walking' },
+    mode: { type: String, enum: ['car', 'bike', 'bus', 'metro', 'walking', 'mixed', 'public', 'wfh'], default: 'walking' },
     dailyDistanceKm: { type: Number, default: 0 }
   },
   electricity: {
     monthlyUsage: { type: Number, default: 0 }
   },
   lifestyle: {
-    dietType: { type: String, enum: ['vegan', 'vegetarian', 'omnivore', 'meat-heavy'], default: 'vegetarian' },
+    dietType: { type: String, enum: ['vegan', 'vegetarian', 'balanced', 'meat-heavy', 'omnivore'], default: 'vegetarian' },
     screenTime: { type: Number, default: 0 }
   },
-  sustainabilityGoal: { type: String, enum: ['reduce25', 'reduce50', 'offset', 'awareness'], default: 'awareness' },
+  sustainabilityGoal: { type: String, enum: ['transportation', 'electricity', 'lifestyle', 'sustainability', 'reduce25', 'reduce50', 'offset', 'awareness'], default: 'awareness' },
   onboardingCompleted: { type: Boolean, default: false },
 
   // Legacy flat fields kept so existing onboarding, dashboard, and carbon logic continue to work.
   country: { type: String, default: '' },
-  transportMode: { type: String, enum: ['car', 'bike', 'public', 'walking', 'wfh'], default: 'walking' },
+  transportMode: { type: String, enum: ['car', 'bike', 'bus', 'metro', 'walking', 'mixed', 'public', 'wfh'], default: 'walking' },
   dailyTravelKm: { type: Number, default: 0 },
   monthlyElectricityKwh: { type: Number, default: 0 },
-  dietType: { type: String, enum: ['vegan', 'vegetarian', 'omnivore', 'meat-heavy'], default: 'vegetarian' },
+  dietType: { type: String, enum: ['vegan', 'vegetarian', 'balanced', 'meat-heavy', 'omnivore'], default: 'vegetarian' },
   dailyDigitalHours: { type: Number, default: 0 },
   workStyle: { type: String, enum: ['office', 'remote', 'hybrid'], default: 'office' },
   householdSize: { type: Number, default: 1 },
-  goalType: { type: String, enum: ['reduce25', 'reduce50', 'offset', 'awareness'], default: 'awareness' }
+  goalType: { type: String, enum: ['transportation', 'electricity', 'lifestyle', 'sustainability', 'reduce25', 'reduce50', 'offset', 'awareness'], default: 'awareness' }
 }, { _id: false });
 
 const badgeSchema = new mongoose.Schema({

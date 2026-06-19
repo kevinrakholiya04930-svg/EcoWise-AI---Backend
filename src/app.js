@@ -10,6 +10,7 @@ const userRoutes = require('./features/user/user.routes');
 const carbonRoutes = require('./features/carbon/carbon.routes');
 const coachRoutes = require('./features/coach/coach.routes');
 const gamificationRoutes = require('./features/gamification/gamification.routes');
+const onboardingRoutes = require('./features/onboarding/onboarding.routes');
 
 const { errorHandler } = require('./middleware/error.middleware');
 const ensureDBConnection = require('./middleware/db.middleware');
@@ -56,6 +57,7 @@ app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/carbon', carbonRoutes);
 app.use('/api/v1/coach', coachRoutes);
 app.use('/api/v1/gamification', gamificationRoutes);
+app.use('/api/v1/onboarding', onboardingRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
