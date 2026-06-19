@@ -12,6 +12,7 @@ const coachRoutes = require('./features/coach/coach.routes');
 const gamificationRoutes = require('./features/gamification/gamification.routes');
 
 const { errorHandler } = require('./middleware/error.middleware');
+const ensureDBConnection = require('./middleware/db.middleware');
 
 const app = express();
 
@@ -49,6 +50,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(mongoSanitize());
 
 // Routes
+app.use('/api/v1', ensureDBConnection);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/carbon', carbonRoutes);
