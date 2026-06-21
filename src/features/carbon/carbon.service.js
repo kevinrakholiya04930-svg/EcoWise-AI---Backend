@@ -1,15 +1,20 @@
 const CarbonEntry = require('./carbon.model');
 const User = require('../user/user.model');
-const { calculateEmissions, getPersona } = require('./carbon.calculator');
+const {
+  calculateEmissions,
+  getPersona
+} = require('./carbon.calculator');
 
 const logWeeklyEntry = async (userId, data) => {
   const { week, profile } = data;
-  
+
   if (!week || !profile) {
     throw new Error('Week and profile variables are required');
   }
 
+  // Need mongoose document because we save later
   const user = await User.findById(userId);
+
   if (!user) {
     throw new Error('User not found');
   }
@@ -18,8 +23,9 @@ const logWeeklyEntry = async (userId, data) => {
   const calculated = calculateEmissions(profile);
   const persona = getPersona(calculated);
 
-  // Check if entry already exists for this week
+  // Check if entry exists
   let entry = await CarbonEntry.findOne({ userId, week });
+
   const isNewEntry = !entry;
 
   if (entry) {
@@ -30,9 +36,11 @@ const logWeeklyEntry = async (userId, data) => {
       digital: calculated.digital,
       total: calculated.total
     };
+
     entry.carbonScore = calculated.score;
     entry.treesRequired = calculated.treesRequired;
     entry.persona = persona;
+
     await entry.save();
   } else {
     entry = await CarbonEntry.create({
@@ -51,27 +59,32 @@ const logWeeklyEntry = async (userId, data) => {
     });
   }
 
-  // Award points & update streaks if it's a new week log
+  // Gamification logic
   if (isNewEntry) {
-    // 1. Award 10 base points
+    // Base points
     user.gamification.greenPoints += 10;
 
-    // 2. Check reduction vs last week
-    // Parse week string to find previous week (e.g. "2026-W25" -> prev should be "2026-W24")
     const prevWeek = getPreviousWeekStr(week);
-    const lastEntry = await CarbonEntry.findOne({ userId, week: prevWeek });
-    
-    if (lastEntry && calculated.total < lastEntry.emissions.total) {
-      user.gamification.greenPoints += 100; // Award 100 pts for reduction
+
+    const [lastEntry, mostRecentEntryBeforeThis] = await Promise.all([
+      CarbonEntry.findOne({ userId, week: prevWeek }).lean(),
+      CarbonEntry.findOne({
+        userId,
+        week: { $ne: week }
+      })
+        .sort({ week: -1 })
+        .lean()
+    ]);
+
+    // Reduction bonus
+    if (
+      lastEntry &&
+      calculated.total < lastEntry.emissions.total
+    ) {
+      user.gamification.greenPoints += 100;
     }
 
-    // 3. Update Streak
-    // Check if user has active streak
-    const mostRecentEntryBeforeThis = await CarbonEntry.findOne({ 
-      userId, 
-      week: { $ne: week } 
-    }).sort({ week: -1 });
-
+    // Streak logic
     if (mostRecentEntryBeforeThis) {
       if (mostRecentEntryBeforeThis.week === prevWeek) {
         user.gamification.currentStreak += 1;
@@ -82,15 +95,22 @@ const logWeeklyEntry = async (userId, data) => {
       user.gamification.currentStreak = 1;
     }
 
-    if (user.gamification.currentStreak > user.gamification.longestStreak) {
-      user.gamification.longestStreak = user.gamification.currentStreak;
+    // Longest streak
+    if (
+      user.gamification.currentStreak >
+      user.gamification.longestStreak
+    ) {
+      user.gamification.longestStreak =
+        user.gamification.currentStreak;
     }
+
     user.gamification.lastActiveDate = new Date();
 
-    // Check level thresholds
-    // Level 1: 0, Level 2: 500, Level 3: 1500, Level 4: 3000, Level 5: 6000, Level 6: 10000
+    // Level calculation
     const points = user.gamification.greenPoints;
+
     let newLevel = 1;
+
     if (points >= 10000) newLevel = 6;
     else if (points >= 6000) newLevel = 5;
     else if (points >= 3000) newLevel = 4;
@@ -99,17 +119,37 @@ const logWeeklyEntry = async (userId, data) => {
 
     user.gamification.level = newLevel;
 
-    // Award badges based on badges logic
-    const hasBadge = (badgeId) => user.gamification.earnedBadges.some(b => b.id === badgeId);
-    
+    // Badge helper
+    const hasBadge = (badgeId) =>
+      user.gamification.earnedBadges.some(
+        (b) => b.id === badgeId
+      );
+
     if (!hasBadge('data-driven')) {
-      user.gamification.earnedBadges.push({ id: 'data-driven', earnedAt: new Date() });
+      user.gamification.earnedBadges.push({
+        id: 'data-driven',
+        earnedAt: new Date()
+      });
     }
-    if (user.gamification.currentStreak >= 7 && !hasBadge('week-warrior')) {
-      user.gamification.earnedBadges.push({ id: 'week-warrior', earnedAt: new Date() });
+
+    if (
+      user.gamification.currentStreak >= 7 &&
+      !hasBadge('week-warrior')
+    ) {
+      user.gamification.earnedBadges.push({
+        id: 'week-warrior',
+        earnedAt: new Date()
+      });
     }
-    if (user.gamification.currentStreak >= 30 && !hasBadge('month-master')) {
-      user.gamification.earnedBadges.push({ id: 'month-master', earnedAt: new Date() });
+
+    if (
+      user.gamification.currentStreak >= 30 &&
+      !hasBadge('month-master')
+    ) {
+      user.gamification.earnedBadges.push({
+        id: 'month-master',
+        earnedAt: new Date()
+      });
     }
 
     await user.save();
@@ -124,47 +164,69 @@ const logWeeklyEntry = async (userId, data) => {
 };
 
 const getHistory = async (userId) => {
-  return await CarbonEntry.find({ userId }).sort({ week: 1 }).limit(12);
+  return CarbonEntry.find({ userId })
+    .sort({ week: -1 })
+    .limit(12)
+    .lean();
 };
 
 const getSummary = async (userId) => {
-  // Get latest entry
-  const latest = await CarbonEntry.findOne({ userId }).sort({ week: -1 });
-  if (!latest) {
-    // Return baseline calculated from profile
-    const user = await User.findById(userId);
-    if (!user || !user.onboardingCompleted) {
-      return null;
-    }
-    const baseline = calculateEmissions(user.profile);
-    return {
-      emissions: baseline,
-      carbonScore: baseline.score,
-      treesRequired: baseline.treesRequired,
-      persona: user.persona,
-      week: 'Baseline'
-    };
+  const latest = await CarbonEntry.findOne({ userId })
+    .sort({ week: -1 })
+    .lean();
+
+  if (latest) {
+    return latest;
   }
-  return latest;
+
+  const user = await User.findById(userId)
+    .select('profile persona onboardingCompleted')
+    .lean();
+
+  if (!user || !user.onboardingCompleted) {
+    return null;
+  }
+
+  const baseline = calculateEmissions(user.profile);
+
+  return {
+    emissions: baseline,
+    carbonScore: baseline.score,
+    treesRequired: baseline.treesRequired,
+    persona: user.persona,
+    week: 'Baseline'
+  };
 };
 
 const getProjection = async (userId) => {
-  const history = await CarbonEntry.find({ userId }).sort({ week: 1 });
-  const user = await User.findById(userId);
-  
+  const [history, user] = await Promise.all([
+    CarbonEntry.find({ userId })
+      .sort({ week: 1 })
+      .lean(),
+
+    User.findById(userId)
+      .select('profile')
+      .lean()
+  ]);
+
   if (!user) {
     throw new Error('User not found');
   }
 
   const baseline = calculateEmissions(user.profile);
+
   let latestTotal = baseline.total;
   let dataPoints = [];
 
   if (history.length > 0) {
-    dataPoints = history.map((entry, idx) => ({ x: idx, y: entry.emissions.total }));
-    latestTotal = history[history.length - 1].emissions.total;
+    dataPoints = history.map((entry, idx) => ({
+      x: idx,
+      y: entry.emissions.total
+    }));
+
+    latestTotal =
+      history[history.length - 1].emissions.total;
   } else {
-    // Make fake history for regression if empty
     dataPoints = [
       { x: 0, y: baseline.total * 1.1 },
       { x: 1, y: baseline.total * 1.05 },
@@ -172,10 +234,14 @@ const getProjection = async (userId) => {
     ];
   }
 
-  // Linear regression y = mx + c
   const n = dataPoints.length;
-  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-  for (let pt of dataPoints) {
+
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+
+  for (const pt of dataPoints) {
     sumX += pt.x;
     sumY += pt.y;
     sumXY += pt.x * pt.y;
@@ -186,59 +252,94 @@ const getProjection = async (userId) => {
   let intercept = latestTotal;
 
   if (n > 1) {
-    const denominator = (n * sumXX - sumX * sumX);
+    const denominator =
+      n * sumXX - sumX * sumX;
+
     if (denominator !== 0) {
-      slope = (n * sumXY - sumX * sumY) / denominator;
-      intercept = (sumY - slope * sumX) / n;
+      slope =
+        (n * sumXY - sumX * sumY) /
+        denominator;
+
+      intercept =
+        (sumY - slope * sumX) / n;
     }
   }
 
-  // Generate 12-week projections
   const currentTrajectory = [];
   const goalTrajectory = [];
   const optimisticTrajectory = [];
 
-  const goalMultiplier = user.profile.goalType === 'reduce50' ? 0.5 : 0.75; // 50% or 25% reduction target
+  const goalMultiplier =
+    user.profile.goalType === 'reduce50'
+      ? 0.5
+      : 0.75;
 
-  const startIdx = history.length > 0 ? history.length - 1 : 2;
+  const startIdx =
+    history.length > 0
+      ? history.length - 1
+      : 2;
 
   for (let i = 1; i <= 12; i++) {
     const weekIdx = startIdx + i;
-    
-    // Trajectory projected by regression
-    let projVal = slope * weekIdx + intercept;
-    if (projVal < 20) projVal = 20; // Lower physical limit
-    currentTrajectory.push(Math.round(projVal));
 
-    // Goal trajectory (exponential decay towards goal)
-    const goalVal = latestTotal - ((latestTotal * (1 - goalMultiplier)) * (i / 12));
-    goalTrajectory.push(Math.round(Math.max(20, goalVal)));
+    let projVal =
+      slope * weekIdx + intercept;
 
-    // Optimistic trajectory (rapid drops)
-    const optVal = latestTotal * Math.pow(0.93, i);
-    optimisticTrajectory.push(Math.round(Math.max(20, optVal)));
+    if (projVal < 20) {
+      projVal = 20;
+    }
+
+    currentTrajectory.push(
+      Math.round(projVal)
+    );
+
+    const goalVal =
+      latestTotal -
+      latestTotal *
+        (1 - goalMultiplier) *
+        (i / 12);
+
+    goalTrajectory.push(
+      Math.round(Math.max(20, goalVal))
+    );
+
+    const optVal =
+      latestTotal * Math.pow(0.93, i);
+
+    optimisticTrajectory.push(
+      Math.round(Math.max(20, optVal))
+    );
   }
 
   return {
     currentTrajectory,
     goalTrajectory,
     optimisticTrajectory,
-    labels: Array.from({ length: 12 }, (_, i) => `Week ${i + 1}`)
+    labels: Array.from(
+      { length: 12 },
+      (_, i) => `Week ${i + 1}`
+    )
   };
 };
 
-// Helper to calculate previous week string
 function getPreviousWeekStr(weekStr) {
-  // weekStr = "YYYY-Www"
-  const parts = weekStr.split('-W');
-  const year = parseInt(parts[0]);
-  const week = parseInt(parts[1]);
-  
+  const [yearStr, weekStrPart] =
+    weekStr.split('-W');
+
+  const year = parseInt(yearStr);
+  const week = parseInt(weekStrPart);
+
   if (week === 1) {
     return `${year - 1}-W52`;
   }
+
   const prevWeek = week - 1;
-  return `${year}-W${prevWeek < 10 ? '0' + prevWeek : prevWeek}`;
+
+  return `${year}-W${
+    prevWeek < 10
+      ? `0${prevWeek}`
+      : prevWeek
+  }`;
 }
 
 module.exports = {

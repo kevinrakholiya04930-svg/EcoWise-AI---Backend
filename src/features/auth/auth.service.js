@@ -2,20 +2,33 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../user/user.model');
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'supersecretkeyreplaceinproduction', {
-    expiresIn: '7d',
-  });
-};
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  'supersecretkeyreplaceinproduction';
 
-const registerUser = async (name, email, password) => {
-  const userExists = await User.findOne({ email });
+const generateToken = (id) =>
+  jwt.sign(
+    { id },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+const registerUser = async (
+  name,
+  email,
+  password
+) => {
+  const userExists =
+    await User.exists({ email });
+
   if (userExists) {
-    throw new Error('User already exists');
+    throw new Error(
+      'User already exists'
+    );
   }
 
-  const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash(password, salt);
+  const passwordHash =
+    await bcrypt.hash(password, 10);
 
   const user = await User.create({
     name,
@@ -27,50 +40,90 @@ const registerUser = async (name, email, password) => {
     _id: user._id,
     name: user.name,
     email: user.email,
-    token: generateToken(user._id),
+    token: generateToken(
+      user._id.toString()
+    ),
   };
 };
 
-const loginUser = async (email, password) => {
-  const user = await User.findOne({ email });
+const loginUser = async (
+  email,
+  password
+) => {
+  const user =
+    await User.findOne({ email });
+
   if (!user) {
-    throw new Error('Invalid email or password');
+    throw new Error(
+      'Invalid email or password'
+    );
   }
 
-  const isMatch = await bcrypt.compare(password, user.passwordHash);
+  const isMatch =
+    await bcrypt.compare(
+      password,
+      user.passwordHash
+    );
+
   if (!isMatch) {
-    throw new Error('Invalid email or password');
+    throw new Error(
+      'Invalid email or password'
+    );
   }
 
   return {
     _id: user._id,
     name: user.name,
     email: user.email,
-    token: generateToken(user._id),
-    onboardingCompleted: user.onboardingCompleted,
+    token: generateToken(
+      user._id.toString()
+    ),
+    onboardingCompleted:
+      user.onboardingCompleted,
   };
 };
 
-const changePassword = async (userId, currentPassword, newPassword) => {
-  const user = await User.findById(userId);
-  if (!user) {
-    throw new Error('User not found');
-  }
+const changePassword =
+  async (
+    userId,
+    currentPassword,
+    newPassword
+  ) => {
+    const user =
+      await User.findById(userId);
 
-  const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
-  if (!isMatch) {
-    throw new Error('Invalid current password');
-  }
+    if (!user) {
+      throw new Error(
+        'User not found'
+      );
+    }
 
-  const salt = await bcrypt.genSalt(10);
-  user.passwordHash = await bcrypt.hash(newPassword, salt);
-  await user.save();
-  return true;
-};
+    const isMatch =
+      await bcrypt.compare(
+        currentPassword,
+        user.passwordHash
+      );
+
+    if (!isMatch) {
+      throw new Error(
+        'Invalid current password'
+      );
+    }
+
+    user.passwordHash =
+      await bcrypt.hash(
+        newPassword,
+        10
+      );
+
+    await user.save();
+
+    return true;
+  };
 
 module.exports = {
   registerUser,
   loginUser,
   changePassword,
-  generateToken
+  generateToken,
 };

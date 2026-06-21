@@ -17,41 +17,57 @@ const ensureDBConnection = require('./middleware/db.middleware');
 
 const app = express();
 
-// Security HTTP Headers
+app.disable('x-powered-by');
+
 app.use(helmet());
 
-// CORS config
-app.use(cors({
-  origin: '*', // Allow all origins for hackathon simplicity
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(
+  cors({
+    origin:
+      process.env.NODE_ENV === 'production'
+        ? process.env.FRONTEND_URL?.split(',')
+        : '*',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  })
+);
 
-// Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 mins
-  max: 200, // limit each IP to 200 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: {
     success: false,
-    message: 'Too many requests from this IP, please try again after 15 minutes'
+    message:
+      'Too many requests from this IP, please try again after 15 minutes'
   }
 });
+
 app.use('/api/', limiter);
 
-// Logging
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
-// Body parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({
+  extended: true,
+  limit: '1mb'
+}));
 
-// Sanitization against NoSQL Query Injection
 app.use(mongoSanitize());
 
-// Routes
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Server is healthy'
+  });
+});
+
 app.use('/api/v1', ensureDBConnection);
+
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/carbon', carbonRoutes);
@@ -59,12 +75,6 @@ app.use('/api/v1/coach', coachRoutes);
 app.use('/api/v1/gamification', gamificationRoutes);
 app.use('/api/v1/onboarding', onboardingRoutes);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ success: true, message: 'Server is healthy' });
-});
-
-// Centralized Error Handler
 app.use(errorHandler);
 
 module.exports = app;

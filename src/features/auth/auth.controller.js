@@ -2,12 +2,16 @@ const authService = require('./auth.service');
 
 const register = async (req, res, next) => {
   try {
-    const { name, email, password } = req.body;
-    const data = await authService.registerUser(name, email, password);
-    res.status(201).json({
+    const data = await authService.registerUser(
+      req.body.name,
+      req.body.email,
+      req.body.password
+    );
+
+    return res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      data
+      data,
     });
   } catch (error) {
     res.status(400);
@@ -17,12 +21,15 @@ const register = async (req, res, next) => {
 
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const data = await authService.loginUser(email, password);
-    res.status(200).json({
+    const data = await authService.loginUser(
+      req.body.email,
+      req.body.password
+    );
+
+    return res.status(200).json({
       success: true,
       message: 'Login successful',
-      data
+      data,
     });
   } catch (error) {
     res.status(401);
@@ -32,23 +39,33 @@ const login = async (req, res, next) => {
 
 const getMe = async (req, res, next) => {
   try {
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: 'Current user profile fetched successfully',
-      data: req.user
+      message:
+        'Current user profile fetched successfully',
+      data: req.user,
     });
   } catch (error) {
     next(error);
   }
 };
 
-const changePassword = async (req, res, next) => {
+const changePassword = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const { currentPassword, newPassword } = req.body;
-    await authService.changePassword(req.user._id, currentPassword, newPassword);
-    res.status(200).json({
+    await authService.changePassword(
+      req.user._id,
+      req.body.currentPassword,
+      req.body.newPassword
+    );
+
+    return res.status(200).json({
       success: true,
-      message: 'Password changed successfully'
+      message:
+        'Password changed successfully',
     });
   } catch (error) {
     res.status(400);
@@ -60,5 +77,5 @@ module.exports = {
   register,
   login,
   getMe,
-  changePassword
+  changePassword,
 };

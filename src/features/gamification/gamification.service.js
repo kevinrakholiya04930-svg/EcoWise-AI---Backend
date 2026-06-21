@@ -1,95 +1,133 @@
 const User = require('../user/user.model');
 const Challenge = require('./challenge.model');
 
+const calculateLevel = (points) => {
+  if (points >= 10000) return 6;
+  if (points >= 6000) return 5;
+  if (points >= 3000) return 4;
+  if (points >= 1500) return 3;
+  if (points >= 500) return 2;
+  return 1;
+};
+
 const getStats = async (userId) => {
-  const user = await User.findById(userId).select('gamification name persona');
+  const user = await User.findById(userId)
+    .select('gamification')
+    .lean();
+
   if (!user) {
     throw new Error('User not found');
   }
+
   return user.gamification;
 };
 
 const getChallenges = async (userId) => {
-  const user = await User.findById(userId);
+  const [user, allChallenges] = await Promise.all([
+    User.findById(userId)
+      .select('gamification')
+      .lean(),
+
+    Challenge.find({}).lean()
+  ]);
+
   if (!user) {
     throw new Error('User not found');
   }
 
-  const allChallenges = await Challenge.find({});
-  
-  // Map through challenges and mark active/completed
-  const activeIds = user.gamification.activeChallenges.map(c => c.id);
-  const completedIds = user.gamification.earnedBadges.map(b => b.id); // for demo we can map completed challenges to badges or let them stand alone.
-  // Wait! In the user schema:
-  // user.gamification.earnedBadges holds earned badges.
-  // Let's make sure we return challenges with flags: `isActive: boolean` and `isCompleted: boolean`
-  // Since we don't have a separate completedChallenges array in user schema (we deleted it to make it lean, wait, let's look at user model: user schema does not have completedChallenges, but let's check user model we created: it only has earnedBadges and activeChallenges. Perfect! We can store completed challenges in a simple list or treat badge rewards as completion trackers).
-  // Let's assume completed challenge IDs are stored in activeChallenges once completed, or let's check.
-  // Wait, let's keep track of completed challenge IDs by checking if the user earned the badge corresponding to the challenge, or let's add a quick helper to track completed challenge IDs on the fly, or just map them!
-  // Wait, let's check user schema. If we want a separate completedChallenges field, we can query activeChallenges and check. To make it extremely simple and bulletproof, when a challenge is completed, we remove it from `activeChallenges` and add its ID (or a badge ID) to user's badges.
-  // Let's define the mapping:
-  const challenges = allChallenges.map(ch => {
-    const isJoined = activeIds.includes(ch._id.toString());
-    const isFinished = user.gamification.earnedBadges.some(b => b.id === `challenge-${ch._id}`);
-    return {
-      ...ch.toObject(),
-      isJoined,
-      isFinished
-    };
-  });
+  const activeIds = new Set(
+    user.gamification.activeChallenges.map((c) => c.id)
+  );
 
-  return challenges;
+  const completedIds = new Set(
+    user.gamification.earnedBadges.map((b) => b.id)
+  );
+
+  return allChallenges.map((ch) => ({
+    ...ch,
+    isJoined: activeIds.has(ch._id.toString()),
+    isFinished: completedIds.has(`challenge-${ch._id}`)
+  }));
 };
 
 const joinChallenge = async (userId, challengeId) => {
-  const user = await User.findById(userId);
+  const [user, challenge] = await Promise.all([
+    User.findById(userId),
+    Challenge.findById(challengeId)
+  ]);
+
   if (!user) {
     throw new Error('User not found');
   }
 
-  const challenge = await Challenge.findById(challengeId);
   if (!challenge) {
     throw new Error('Challenge not found');
   }
 
-  // Check if already joined or completed
-  const activeIds = user.gamification.activeChallenges.map(c => c.id);
+  const activeIds = user.gamification.activeChallenges.map(
+    (c) => c.id
+  );
+
   if (activeIds.includes(challengeId)) {
     throw new Error('Challenge is already active');
   }
 
-  const isFinished = user.gamification.earnedBadges.some(b => b.id === `challenge-${challengeId}`);
-  if (isFinished) {
+  const alreadyCompleted =
+    user.gamification.earnedBadges.some(
+      (b) => b.id === `challenge-${challengeId}`
+    );
+
+  if (alreadyCompleted) {
     throw new Error('Challenge already completed');
   }
 
-  user.gamification.activeChallenges.push({ id: challengeId, startedAt: new Date() });
+  user.gamification.activeChallenges.push({
+    id: challengeId,
+    startedAt: new Date()
+  });
+
   await user.save();
+
   return user.gamification;
 };
 
 const completeChallenge = async (userId, challengeId) => {
-  const user = await User.findById(userId);
+  const [user, challenge] = await Promise.all([
+    User.findById(userId),
+    Challenge.findById(challengeId)
+  ]);
+
   if (!user) {
     throw new Error('User not found');
   }
 
-  const challenge = await Challenge.findById(challengeId);
   if (!challenge) {
     throw new Error('Challenge not found');
   }
 
-  // Verify challenge is active
-  const activeIndex = user.gamification.activeChallenges.findIndex(c => c.id === challengeId);
+  const activeIndex =
+    user.gamification.activeChallenges.findIndex(
+      (c) => c.id === challengeId
+    );
+
   if (activeIndex === -1) {
-    throw new Error('Challenge is not active or not joined');
+    throw new Error(
+      'Challenge is not active or not joined'
+    );
   }
 
-  // Remove from active
-  user.gamification.activeChallenges.splice(activeIndex, 1);
+  // Store previous level
+  const previousLevel = user.gamification.level;
 
-  // Add points
-  user.gamification.greenPoints += challenge.pointsReward;
+  // Remove challenge from active list
+  user.gamification.activeChallenges.splice(
+    activeIndex,
+    1
+  );
+
+  // Award points
+  user.gamification.greenPoints +=
+    challenge.pointsReward;
 
   // Add completion badge
   user.gamification.earnedBadges.push({
@@ -97,23 +135,19 @@ const completeChallenge = async (userId, challengeId) => {
     earnedAt: new Date()
   });
 
-  // Level Up logic
-  // Level 1: 0, Level 2: 500, Level 3: 1500, Level 4: 3000, Level 5: 6000, Level 6: 10000
-  const points = user.gamification.greenPoints;
-  let newLevel = 1;
-  if (points >= 10000) newLevel = 6;
-  else if (points >= 6000) newLevel = 5;
-  else if (points >= 3000) newLevel = 4;
-  else if (points >= 1500) newLevel = 3;
-  else if (points >= 500) newLevel = 2;
+  // Calculate new level
+  const newLevel = calculateLevel(
+    user.gamification.greenPoints
+  );
 
   user.gamification.level = newLevel;
 
   await user.save();
+
   return {
     gamification: user.gamification,
     pointsAwarded: challenge.pointsReward,
-    levelUp: newLevel > user.gamification.level
+    levelUp: newLevel > previousLevel
   };
 };
 
